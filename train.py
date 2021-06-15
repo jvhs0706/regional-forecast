@@ -36,6 +36,13 @@ def random_split_target_dataset(obs_fn: str = './data/obs_data_target.pkl', p = 
     test = np.logical_not(train)
     train_stations, test_stations = list(np.array(list(obs.keys()))[train]), list(np.array(list(obs.keys()))[test])
     return train_stations, test_stations
+
+def random_temporal_split(length, n_test_date = 500):
+    test_indices = np.random.choice(length, n_test_date, replace = False)
+    test_mask = np.zeros(length, dtype = bool)
+    test_mask[test_indices] = True 
+
+    return np.arange(length)[~test_mask], np.arange(length)[test_mask]
     
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -53,8 +60,15 @@ if __name__ == '__main__':
 
     train_stations, test_stations = random_split_target_dataset()
     train, test = RegionalDataset(train_stations), RegionalDataset(test_stations)
+    assert len(train) == len(test)
     test.target_wrf_cmaq.normalizer = train.target_wrf_cmaq.normalizer
+    
+    train_dates, test_dates = random_temporal_split(len(train))
+    train_subset, test_subset = torch.utils.data.Subset(train, train_dates), torch.utils.data.Subset(test, test_dates)
     model = Regional()
+
+    print(f'Using {len(train_stations)} stations for training, {len(test_stations)} stations for validation.')
+    print(f'Using {len(train_subset)} days for training, {len(test_subset)} days for validation.')
     
     print(f'Number of parameters in the model: {int(sum([np.prod(p.shape) for p in model.parameters()]))}')
 
@@ -63,7 +77,7 @@ if __name__ == '__main__':
 
     for i in range(args.num_epoch):
         epoch_loss = []
-        dataloader, dist = torch.utils.data.DataLoader(train, batch_size=args.batch_size, shuffle=True), train.dist
+        dataloader, dist = torch.utils.data.DataLoader(train_subset, batch_size=args.batch_size, shuffle=True), train.dist
         for j, (X0, X1, y) in enumerate(dataloader):
             optimizer.zero_grad()
             pred = model(X0, X1, dist)
@@ -77,7 +91,7 @@ if __name__ == '__main__':
         
         if i % args.validate_every == 0:
             model.eval()
-            vdataloader, vdist = torch.utils.data.DataLoader(test, batch_size=args.batch_size, shuffle=True), test.dist
+            vdataloader, vdist = torch.utils.data.DataLoader(test_subset, batch_size=args.batch_size, shuffle=True), test.dist
             epoch_vloss = []
             with torch.no_grad():
                 for j, (vX0, vX1, vy) in enumerate(vdataloader):
@@ -85,7 +99,6 @@ if __name__ == '__main__':
                     vy = torch.stack(list(vy.values()), axis = 0)
                     vloss, vcount = batch_loss(y = vy, pred = vpred)
                     epoch_vloss.append((vloss.item(), vcount.item()))
-                    # print(f'Validation batch {j}, loss: {vloss.item()/ vcount.item():.2f}')
             print(f'Iteration {i}, training loss: {_weighted_mean(epoch_loss):.2f}, validation loss: {_weighted_mean(epoch_vloss):.2f}.')
             model.train()
         else:
@@ -102,3 +115,5 @@ if __name__ == '__main__':
         pk.dump({st: ds.normalizer for st, ds in train.source.station_datasets.items()}, f)
     with open(f'./{args.model}_models/wrf_cmaq_normalizers.pkl', 'wb') as f:
         pk.dump(train.target_wrf_cmaq.normalizer, f)
+    with open(f'./{args.model}_models/temporal_split.pkl', 'wb') as f:
+        pk.dump({'train': train_dates, 'test': test_dates}, f)
