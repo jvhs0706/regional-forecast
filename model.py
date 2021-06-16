@@ -18,19 +18,19 @@ class Regional(nn.Module):
         with open('./data/obs_data_source.pkl', 'rb') as f:
             obs_source = pk.load(f)
             self.source_encoder_decoders = nn.ModuleDict({
-                st: EncoderDecoder(len(obs_source[st].columns), encoded_size = 64, num_step = 48, out_channels = 64, dropout = dropout, bn = bn) for st in self.source_stations
+                st: EncoderDecoder(len(obs_source[st].columns), encoded_size = 50, num_step = 48, out_channels = 40, dropout = dropout) for st in self.source_stations
             })
 
         self.wrf_cmaq_dlstms = nn.Sequential(
-            BidirectionalLSTM(10, 64, bn),
-            BidirectionalLSTM(64, 64, bn)
+            BidirectionalLSTM(10, 40, bn),
+            BidirectionalLSTM(40, 50, bn)
         )
 
-        self.gcn = BipartiteLSTMGCN1D([64, 64, 64], len(source_loc), bn)
+        self.gcn = BipartiteLSTMGCN1D([40, 50, 50], len(source_loc), bn)
 
         self.finals = nn.Sequential(
-            BidirectionalLSTM(128, 128, bn),
-            Dense1D(in_features = 128, out_features = 2, num_step = 48, dropout = dropout, time_distributed = True, activation = None)
+            BidirectionalLSTM(100, 30, bn),
+            Dense1D(in_features = 30, out_features = 2, num_step = 48, dropout = dropout, time_distributed = True, activation = None)
         )
 
     def forward(self, source_obs_dic: dict, target_wrf_cmaq_dic: dict, dist: torch.tensor):

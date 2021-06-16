@@ -21,12 +21,10 @@ class LSTMEncoder(nn.Module):
         return out
 
 class LSTMDecoder(nn.Module):
-    def __init__(self, encoded_size: int, length: int, bn: bool):
+    def __init__(self, encoded_size: int, length: int):
         super().__init__()
         self.lstm_cell = nn.LSTMCell(0, encoded_size)
         self.length = length 
-        if bn:
-            self.bn = nn.BatchNorm1d(encoded_size)
 
     def forward(self, h_in):
         N, H = h_in.shape
@@ -41,8 +39,6 @@ class LSTMDecoder(nn.Module):
             out.append(h)
 
         out = torch.stack(out, axis = -1)
-        if hasattr(self, 'bn'):
-            out = self.bn(out)
         return out
 
 
@@ -82,12 +78,13 @@ class BidirectionalLSTM(nn.Module):
 
 
 class EncoderDecoder(nn.Module):
-    def __init__(self, in_channels: int, encoded_size: int, num_step: int, out_channels: int, dropout: float, bn: bool):
+    def __init__(self, in_channels: int, encoded_size: int, num_step: int, out_channels: int, dropout: float):
         super().__init__()
         self.encoder = LSTMEncoder(in_channels = in_channels, encoded_size = encoded_size)
-        self.decoder = LSTMDecoder(encoded_size = encoded_size, length = num_step, bn = bn)
+        self.encoded_dropout = nn.Dropout(p = dropout)
+        self.decoder = LSTMDecoder(encoded_size = encoded_size, length = num_step)
         self.dense = Dense1D(in_features = encoded_size, out_features = out_channels, num_step = num_step, dropout = dropout, time_distributed = False)
     
     def forward(self, x):
-        out = self.dense(self.decoder(self.encoder(x)))
+        out = self.dense(self.decoder(self.encoded_dropout(self.encoder(x))))
         return out

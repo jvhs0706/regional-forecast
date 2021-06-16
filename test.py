@@ -66,14 +66,18 @@ if __name__ == '__main__':
         source_normalizers = pk.load(f)
     with open(f'./{args.model}_models/wrf_cmaq_normalizers.pkl', 'rb') as f:
         wrf_cmaq_normalizers = pk.load(f)
+    with open(f'./{args.model}_models/temporal_split.pkl', 'rb') as f:
+        split = pk.load(f)
+        train_dates, test_dates = split['train'], split['test']
     
     train, test = RegionalDataset(train_stations), RegionalDataset(test_stations)
+    train_subset, test_subset = torch.utils.data.Subset(train, train_dates), torch.utils.data.Subset(test, test_dates)
     test.target_wrf_cmaq.normalizer = wrf_cmaq_normalizers
     for st in source_stations:
         train.source.station_datasets[st].normalizer = source_normalizers[st]
         test.source.station_datasets[st].normalizer = source_normalizers[st]
 
-    train_dataloader = torch.utils.data.DataLoader(train, batch_size=args.batch_size, shuffle=False)
+    train_dataloader = torch.utils.data.DataLoader(train_subset, batch_size=args.batch_size, shuffle=False)
     train_pred = {st: ([], [], None) for st in train_stations}
     train_target_features = [train.target_wrf_cmaq.features.index('FSPMC'), train.target_wrf_cmaq.features.index('O3')]
     with torch.no_grad():
@@ -93,10 +97,10 @@ if __name__ == '__main__':
                     ds.wrf_cmaq[ds.history: ds.history + len(ds), train_target_features[0], :],
                     1000 * ds.wrf_cmaq[ds.history: ds.history + len(ds), train_target_features[1], :]
                 ], axis = 1
-            )
+            )[train_dates]
         )
 
-    test_dataloader = torch.utils.data.DataLoader(test, batch_size=args.batch_size, shuffle=False)
+    test_dataloader = torch.utils.data.DataLoader(test_subset, batch_size=args.batch_size, shuffle=False)
     test_pred = {st: ([], [], None) for st in test_stations}
     test_target_features = [test.target_wrf_cmaq.features.index('FSPMC'), test.target_wrf_cmaq.features.index('O3')]
     assert train_target_features == test_target_features
@@ -117,7 +121,7 @@ if __name__ == '__main__':
                     ds.wrf_cmaq[ds.history: ds.history + len(ds), test_target_features[0], :],
                     1000 * ds.wrf_cmaq[ds.history: ds.history + len(ds), test_target_features[1], :]
                 ], axis = 1
-            )
+            )[test_dates]
         )
     
     if args.mode == 'overall':
