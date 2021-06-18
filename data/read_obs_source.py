@@ -72,7 +72,7 @@ def _read_other (threshold: float, interpolate: int):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--interpolate', type = int, help = 'Interpolate the meterological factor observations due to different temporal resolutions.', default = 2)
-    parser.add_argument('--invalid_threshold', type = float, help = 'Maximum ratio of invalid values allowed for each entry of observation.', default = 0.1)
+    parser.add_argument('--invalid_threshold', type = float, help = 'Maximum ratio of invalid values allowed for each entry of observation.', default = 0.25)
     parser.add_argument('--match_distance', type = float, help = 'Maximum distance allowed for matching.', default=10.0)
     parser.add_argument('--feature_threshold', type = int, help = 'The minimum number of features.', default=8)
     args = parser.parse_args()

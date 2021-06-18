@@ -38,7 +38,7 @@ def random_split_target_dataset(obs_fn: str = './data/obs_data_target.pkl', n_te
     train_stations, test_stations = list(np.array(list(obs.keys()))[~test_mask]), list(np.array(list(obs.keys()))[test_mask])
     return train_stations, test_stations
 
-def random_temporal_split(length, n_test_date = 500):
+def random_temporal_split(length, n_test_date = 400):
     test_indices = np.random.choice(length, n_test_date, replace = False)
     test_mask = np.zeros(length, dtype = bool)
     test_mask[test_indices] = True 
@@ -48,10 +48,10 @@ def random_temporal_split(length, n_test_date = 500):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('model', help = 'Model name.')
-    parser.add_argument('-e', '--num_epoch', type = int, help = 'The number of epoches for which the model will be trained.', default = 66)
+    parser.add_argument('-e', '--num_epoch', type = int, help = 'The number of epoches for which the model will be trained.', default = 100)
     parser.add_argument('-bs', '--batch_size', type = int, help = 'Batch size for training.', default = 64)
-    parser.add_argument('-lr', '--lr_config', nargs = 3, help = 'Learning rate configuration: [learning_rate, gamma, step_size].', default = [1e-3, 0.9, 256])
-    parser.add_argument('--validate_every', type = int, help = 'Validate every x iterations.', default = 5)
+    parser.add_argument('-lr', '--lr_config', nargs = 3, help = 'Learning rate configuration: [learning_rate, gamma, step_size].', default = [2e-3, 0.9, 256])
+    parser.add_argument('--validate_every', type = int, help = 'Validate every x iterations.', default = 3)
     args = parser.parse_args()
 
     if not os.path.isdir(f'./{args.model}_models'):
