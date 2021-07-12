@@ -16,6 +16,8 @@ def _verify_file(fn: str, begin_date: date, end_date: date, time_zone: int):
 
 if __name__ == '__main__':
     for fn in os.listdir(datadir):
-        _verify_file(f'{datadir}/{fn}', begin_dt, end_dt, tz)
+        if fn[-4:] == '.csv':
+            print(fn)
+            _verify_file(f'{datadir}/{fn}', begin_dt, end_dt, tz)
     print('All data signature tests passed!')
     

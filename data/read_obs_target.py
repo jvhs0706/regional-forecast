@@ -27,7 +27,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
     
     target_stations, target_loc, target_data = _read_target(threshold=args.invalid_threshold)
-    wrf_latlon, cmaq_latlon = wll('/home/dataop/data/nmodel/wrf_fc/2014/201401/2014010212/wrfout_d03_2014-01-02_12:00:00'), cll('GRIDCRO2D.3km.20150115')
+    wrf_latlon, cmaq_latlon = wll(), cll()
 
     valid_loc, valid_data, match = {}, {}, {}
     for st in target_stations:

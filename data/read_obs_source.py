@@ -72,14 +72,14 @@ def _read_other (threshold: float, interpolate: int):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--interpolate', type = int, help = 'Interpolate the meterological factor observations due to different temporal resolutions.', default = 2)
-    parser.add_argument('--invalid_threshold', type = float, help = 'Maximum ratio of invalid values allowed for each entry of observation.', default = 0.25)
+    parser.add_argument('--invalid_threshold', type = float, help = 'Maximum ratio of invalid values allowed for each entry of observation.', default = 0.1)
     parser.add_argument('--match_distance', type = float, help = 'Maximum distance allowed for matching.', default=10.0)
     parser.add_argument('--feature_threshold', type = int, help = 'The minimum number of features.', default=8)
     args = parser.parse_args()
     
     target_stations, target_loc, target_data = _read_target(threshold=args.invalid_threshold)
     other_loc_dic, other_data_dic = _read_other (threshold=args.invalid_threshold, interpolate=args.interpolate)
-    wrf_latlon, cmaq_latlon = wll('/home/dataop/data/nmodel/wrf_fc/2014/201401/2014010212/wrfout_d03_2014-01-02_12:00:00'), cll('GRIDCRO2D.3km.20150115')
+    wrf_latlon, cmaq_latlon = wll(), cll()
 
     valid_loc, valid_data, match = {}, {}, {}
     for st in target_stations:

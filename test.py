@@ -17,9 +17,6 @@ from plot_stations import get_border
 
 import pandas as pd
 
-from baseline_utils.dataset import BaselineDataset
-from baseline_utils.model import Baseline
-
 def MAE(pred, y, axis = 0):
     return np.nanmean(np.abs(pred - y), axis = axis)
 
@@ -49,7 +46,6 @@ if __name__ == '__main__':
     parser.add_argument('model', help = 'Model name.')
     parser.add_argument('mode', choices= ['overall', 'reliability', 'metrics'])
     parser.add_argument('-bs', '--batch_size', type = int, help = 'Batch size for loading data.', default = 64)
-    parser.add_argument('--baseline', action = 'store_true')
     args = parser.parse_args()
     
     # model loading
@@ -128,35 +124,35 @@ if __name__ == '__main__':
             )[test_dates]
         )
 
-    if args.baseline:
-        baseline_source_predictions = {}
-        for st in source_stations:
-            baseline_dataset = BaselineDataset(st)
-            baseline_dataloader = torch.utils.data.DataLoader(baseline_dataset, batch_size=args.batch_size, shuffle=False)
-            baseline_model = torch.load(f'./{args.model}_models/baseline/{st}_model.nctmo')
-            baseline_model.eval()
+    # if args.baseline:
+    #     baseline_source_predictions = {}
+    #     for st in source_stations:
+    #         baseline_dataset = BaselineDataset(st)
+    #         baseline_dataloader = torch.utils.data.DataLoader(baseline_dataset, batch_size=args.batch_size, shuffle=False)
+    #         baseline_model = torch.load(f'./{args.model}_models/baseline/{st}_model.nctmo')
+    #         baseline_model.eval()
 
-            baseline_pred = ([], None)
-            for X0, X1, _ in baseline_dataloader:
-                baseline_pred[0].append(baseline_model(X0, X1).detach().numpy()) 
+    #         baseline_pred = ([], None)
+    #         for X0, X1, _ in baseline_dataloader:
+    #             baseline_pred[0].append(baseline_model(X0, X1).detach().numpy()) 
 
-            wrf_cmaq_target_indices = [baseline_dataset.wrf_cmaq_features.index('FSPMC'), baseline_dataset.wrf_cmaq_features.index('O3')]
-            baseline_pred = \
-                (   
-                    np.concatenate(baseline_pred[0], axis = 0), \
-                    baseline_dataset.wrf_cmaq[baseline_dataset.history: baseline_dataset.history + len(baseline_dataset), wrf_cmaq_target_indices, :] * np.array([1, 1000]).reshape(1, 2, 1)
-                )
-            baseline_source_predictions[st] = baseline_pred
+    #         wrf_cmaq_target_indices = [baseline_dataset.wrf_cmaq_features.index('FSPMC'), baseline_dataset.wrf_cmaq_features.index('O3')]
+    #         baseline_pred = \
+    #             (   
+    #                 np.concatenate(baseline_pred[0], axis = 0), \
+    #                 baseline_dataset.wrf_cmaq[baseline_dataset.history: baseline_dataset.history + len(baseline_dataset), wrf_cmaq_target_indices, :] * np.array([1, 1000]).reshape(1, 2, 1)
+    #             )
+    #         baseline_source_predictions[st] = baseline_pred
 
-        for st in test_stations:
-            if st not in source_stations:
-                weights = {s: 1/geodesic(source_lat_lon[s], target_lat_lon[st]).km for s in source_stations}
-                n = sum([weights[s] for s in source_stations])
-                weights = {s: weights[s] / n for s in source_stations} 
-                baseline_pred = test_pred[st][2].copy()
-                for s in source_stations:
-                    baseline_pred += weights[s] * (baseline_source_predictions[s][0][test_dates] - baseline_source_predictions[s][1][test_dates])
-                test_pred[st] = (*test_pred[st], baseline_pred)
+    #     for st in test_stations:
+    #         if st not in source_stations:
+    #             weights = {s: 1/geodesic(source_lat_lon[s], target_lat_lon[st]).km for s in source_stations}
+    #             n = sum([weights[s] for s in source_stations])
+    #             weights = {s: weights[s] / n for s in source_stations} 
+    #             baseline_pred = test_pred[st][2].copy()
+    #             for s in source_stations:
+    #                 baseline_pred += weights[s] * (baseline_source_predictions[s][0][test_dates] - baseline_source_predictions[s][1][test_dates])
+    #             test_pred[st] = (*test_pred[st], baseline_pred)
 
     if args.mode == 'overall':
         for st in train_stations:
@@ -171,13 +167,24 @@ if __name__ == '__main__':
             print(f'Model RMSE: {RMSE(test_pred[st][0], test_pred[st][1], axis = (0, 2))}, CMAQ RMSE: {RMSE(test_pred[st][2], test_pred[st][1], axis = (0, 2))}')
             print()
 
+        overall_train_MAE = MAE(np.concatenate([train_pred[st][0] for st in train_stations], axis = 0), np.concatenate([train_pred[st][1] for st in train_stations], axis = 0), axis = (0, 2))
+        overall_train_RMSE = RMSE(np.concatenate([train_pred[st][0] for st in train_stations], axis = 0), np.concatenate([train_pred[st][1] for st in train_stations], axis = 0), axis = (0, 2))
+        overall_test_MAE = MAE(np.concatenate([test_pred[st][0] for st in test_stations], axis = 0), np.concatenate([test_pred[st][1] for st in test_stations], axis = 0), axis = (0, 2))
+        overall_test_RMSE = RMSE(np.concatenate([test_pred[st][0] for st in test_stations], axis = 0), np.concatenate([test_pred[st][1] for st in test_stations], axis = 0), axis = (0, 2))
+        print(F'Train MAE: {overall_train_MAE}')
+        print(F'Train RMSE: {overall_train_RMSE}')
+        print(F'Test MAE: {overall_test_MAE}')
+        print(F'Test RMSE: {overall_test_RMSE}')
+
     elif args.mode == 'reliability':
         plt.contourf(*regional_reliability(source_lat_lon, decay, (21, 24), (112, 115)))
         plt.colorbar()
         plt.title('Reliability')
         plt.xlabel('Longitude')
         plt.ylabel('Latitude')
-        plt.plot([loc[1] for loc in source_lat_lon.values()], [loc[0] for loc in source_lat_lon.values()], 'or', markersize = 2, label = 'Source stations')
+        plt.plot([loc[1] for loc in source_lat_lon.values()], [loc[0] for loc in source_lat_lon.values()], 'or', markersize = 3, label = 'Source stations')
+        plt.plot([loc[1] for st, loc in target_lat_lon.items() if st in train_stations], [loc[0] for st, loc in target_lat_lon.items() if st in train_stations], 'og', markersize = 2, label = 'Target training stations')
+        plt.plot([loc[1] for st, loc in target_lat_lon.items() if st in test_stations], [loc[0] for st, loc in target_lat_lon.items() if st in test_stations], 'ob', markersize = 2, label = 'Target held-out stations')
         borders = get_border(21, 24, 112, 115)
         for (blon, blat) in borders:
             plt.plot(blon, blat, 'k', linewidth=1)
@@ -230,18 +237,19 @@ if __name__ == '__main__':
         plt.close()
 
     elif args.mode == 'metrics':
-        # train_metric_analysis = pd.DataFrame()
-        # for st in train_stations:
-        #     for i, sp in enumerate(['FSPMC', 'O3']):
-        #         for metric in [MAE, RMSE, R]:
-        #             for ind, model in zip([0, 2], ['Model', 'CMAQ']):
-        #                 train_metric_analysis[st, model, sp, metric.__name__] = metric(train_pred[st][ind], train_pred[st][1])[i, :]
-            
+        train_metric_analysis = pd.DataFrame()
+        for st in train_stations:
+            for ind, model in zip([0, 2], ['Model', 'CMAQ']):
+                for i, sp in enumerate(['FSPMC', 'O3']):
+                    for metric in [MAE, RMSE, R]:
+                        train_metric_analysis[st, model, sp, metric.__name__] = metric(train_pred[st][ind], train_pred[st][1])[i, :]
+        train_metric_analysis.to_csv(f'./{args.model}_models/train_metric_analysis.csv')
+
         test_metric_analysis = pd.DataFrame()
         for st in test_stations:
-            for i, sp in enumerate(['FSPMC', 'O3']):
-                for metric in [MAE, RMSE, R]:
-                    for ind, model in zip([0]+list(range(2, len(test_pred[st]))), ['Model', 'CMAQ', 'Baseline']):
+            for ind, model in zip([0, 2], ['Model', 'CMAQ']):
+                for i, sp in enumerate(['FSPMC', 'O3']):
+                    for metric in [MAE, RMSE, R]:
                         test_metric_analysis[st, model, sp, metric.__name__] = metric(test_pred[st][ind], test_pred[st][1])[i, :]
     
         # train_metric_analysis.to_csv(f'./{args.model}_models/train_metric_analysis.csv')
