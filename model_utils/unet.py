@@ -2,6 +2,10 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+'''
+NOT USED IN THE APPLICATION FOR NOW
+'''
+
 class UDownBlock1D(nn.Module):
     def __init__(self, in_channels: int, out_channels: int, kernel_size: int = 3, bn = True):
         super().__init__()

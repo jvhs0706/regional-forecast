@@ -26,13 +26,14 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     args = parser.parse_args()
 
-    with open('./data/lat_lon_target.pkl', 'rb') as f:
-        loc_dic = pk.load(f)
-        plt.plot([loc[1] for loc in loc_dic.values()], [loc[0] for loc in loc_dic.values()], 'ob', markersize = 2, label = 'Target stations')
-        
     with open('./data/lat_lon_source.pkl', 'rb') as f:
         loc_dic = pk.load(f)
         plt.plot([loc[1] for loc in loc_dic.values()], [loc[0] for loc in loc_dic.values()], 'or', markersize = 2, label = 'Source stations')
+        source_stations = list(loc_dic.keys())
+
+    with open('./data/lat_lon_target.pkl', 'rb') as f:
+        loc_dic = pk.load(f)
+        plt.plot([loc[1] for st, loc in loc_dic.items() if st not in source_stations], [loc[0] for st, loc in loc_dic.items() if st not in source_stations], 'ob', markersize = 2, label = 'Non-source target stations')
     
     borders = get_border()
     for (blon, blat) in borders:

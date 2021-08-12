@@ -2,6 +2,9 @@ from geopy.distance import geodesic
 import pickle as pk
 import numpy as np
 from netCDF4 import Dataset 
+from datetime import date
+
+dataset_base_date = date(2015, 1, 4)
 
 def wll(filename = '/home/dataop/data/nmodel/wrf_fc/2014/201401/2014010212/wrfout_d03_2014-01-02_12:00:00'):
     ds = Dataset(filename)

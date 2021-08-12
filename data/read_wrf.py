@@ -50,7 +50,6 @@ def read_wrf(species, begin_date, end_date, begin_hour, predict_length, pred_cla
     return dic
 
 if __name__ == '__main__':
-
     with open('match_target.pkl', 'rb') as f:
         match_dict = pk.load(f)
         match_dict = {st: m[0] for st, m in match_dict.items()}
