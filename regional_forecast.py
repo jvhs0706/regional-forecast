@@ -159,7 +159,7 @@ if __name__ == '__main__':
     fspmc_day1, fspmc_day2, o3_day1, o3_day2 = out[:, :, 1:, 0, :24], out[:, :, :-1, 0, 24:],\
         out[:, :, 1:, 1, :24], out[:, :, :-1, 1, 24:]
 
-    fig, axes = plt.subplots(4, 3, figsize = (100, 80))
+    fig, axes = plt.subplots(4, 3, figsize = (100, 100))
     for i, (arr, arr_baseline, arr_cmaq) in enumerate(zip([fspmc_day1, fspmc_day2, o3_day1, o3_day2], [baseline_fspmc_day1, baseline_fspmc_day2, baseline_o3_day1, baseline_o3_day2], [cmaq_fspmc_day1, cmaq_fspmc_day2, cmaq_o3_day2, cmaq_o3_day2])):
         (cm_kwargs, species, unit) = (fspmc_cm_kwargs, '$\mathrm{PM}_{2.5}$', '$\mu g/m^3$') if i < 2 else (o3_cm_kwargs, '$\mathrm{O}_3$', 'ppbv')
         
@@ -185,5 +185,4 @@ if __name__ == '__main__':
             axes[i, j].yaxis.set_tick_params(labelsize=44)
             axes[i, j].set_xlabel('Longitude', fontsize=48)
             axes[i, j].set_ylabel('Latitude', fontsize=48)
-            
-    plt.savefig(f'./{args.model}_models/regional_forecast_{str(begin_date)}-{str(end_date)}.png')
+    plt.savefig(f'./{args.model}_models/regional_forecast_{str(begin_date)}-{str(end_date)}.png', bbox_inches='tight')

@@ -59,7 +59,7 @@ def plot_ax(st, sp, u, ax, time_axis, obs, pred, time_lag_day):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('model', help = 'Model name.')
-    parser.add_argument('mode', choices= ['overall', 'temporal', 'reliability', 'metrics', 'plots'])
+    parser.add_argument('mode', choices= ['overall', 'temporal', 'metrics', 'plots'])
     parser.add_argument('-bs', '--batch_size', type = int, help = 'Batch size for loading data.', default = 64)
     parser.add_argument('--baseline', action = 'store_true', help = 'Load baseline data.')
     args = parser.parse_args()
@@ -163,7 +163,8 @@ if __name__ == '__main__':
         df = pd.DataFrame()
         for m in metrics:
             values = m(pred = pred, y = y, axis = 0)
-            baseline_values = m(pred = bl, y = y, axis = 0)
+            if args.baseline:
+                baseline_values = m(pred = bl, y = y, axis = 0)
             cmaq_values = m(pred = cmaq, y = y, axis = 0)
             for i, sp in enumerate(['FSPMC', 'O3']):
                 df[m.__name__, 'Model', sp], df[m.__name__, 'CMAQ', sp] = values[i], cmaq_values[i]
@@ -171,19 +172,22 @@ if __name__ == '__main__':
                     df[m.__name__, 'Spatial correction', sp] = baseline_values[i]
         
         for i, (sp, sp_name, unit) in enumerate(zip(['FSPMC', 'O3'], ['$\mathrm{PM}_{2.5}$', '$\mathrm{O}_3$'], ['$\mu g/m^3$', 'ppbv'])):
-            fig, axes = plt.subplots(len(metrics), 1, figsize = (15, 20))
-            fig.suptitle(f'{sp_name} forecast performance at different time-lags', fontsize = 30)
+            fig, axes = plt.subplots(len(metrics), 1, figsize = (16, 24))
             for j, (m, u) in enumerate(zip(metrics, [unit, unit, '%', None])):
                 axes[j].plot(df[m.__name__, 'Model', sp], label = 'Model')
                 if args.baseline:
                     axes[j].plot(df[m.__name__, 'Spatial correction', sp], label = 'Spatial correction')
                 axes[j].plot(df[m.__name__, 'CMAQ', sp], label = 'CMAQ')
-                axes[j].legend()
-                axes[j].set_title(f'{m.__name__} ({u})' if u is not None else f'{m.__name__}', fontsize = 20)
+                axes[j].legend(fontsize = 16)
+                axes[j].set_title(f'{m.__name__} ({u})' if u is not None else f'{m.__name__}', fontsize = 24)
+                axes[j].xaxis.set_tick_params(labelsize=16)
+                axes[j].yaxis.set_tick_params(labelsize=16)
+                axes[j].set_xlabel('Time-lag', fontsize=20)
+            plt.tight_layout()
             plt.savefig(f'./{args.model}_models/temporal_{sp}.png')
             plt.close()
                 
-    elif args.mode == 'reliability':
+
         assert not args.baseline
         plt.contourf(*regional_reliability(source_lat_lon, decay, (lat_min, lat_max), (lon_min, lon_max)))
         plt.colorbar()
@@ -203,14 +207,15 @@ if __name__ == '__main__':
             
         test_reliability = np.exp(-decay[:, None] * test.dist.detach().numpy()).sum(axis = 0)
         
+        
         fig, axes = plt.subplots(4, 4, figsize = (50, 50))
         source_mask = np.array([st in source_stations for st in test_stations])
         for j, m in enumerate(metrics):
             for i, (sp, display_name, unit) in enumerate(zip(['fspmc', 'o3'], ['$\mathrm{PM}_{2.5}$', '$\mathrm{O}_3$'], ['$\mu g/m^3$', 'ppbv'])):
                 axes[j, 2 * i + 1].sharey(axes[j, 2 * i])
                 for t in range(2):
-                    axes[j, 2 * i + t].scatter(test_reliability[source_mask], test_metrics[m.__name__][source_mask, i, t], c = '#ff0000', s = 20, label = 'Source')
-                    axes[j, 2 * i + t].scatter(test_reliability[~source_mask], test_metrics[m.__name__][~source_mask, i, t], c = '#0000ff', s = 20, label = 'Non-source')
+                    axes[j, 2 * i + t].scatter(test_reliability[source_mask], test_metrics[m.__name__][source_mask, i, t], c = '#ff0000', s = 50, label = 'Source')
+                    axes[j, 2 * i + t].scatter(test_reliability[~source_mask], test_metrics[m.__name__][~source_mask, i, t], c = '#0000ff', s = 50, label = 'Non-source')
                     axes[j, 2 * i + t].legend(fontsize = 24)
                     axes[j, 2 * i + t].set_xlabel('Reliability', fontsize = 28)
                     axes[j, 2 * i + t].xaxis.set_tick_params(labelsize=24)
@@ -218,7 +223,7 @@ if __name__ == '__main__':
                     u = f' ({unit})' if j < 2 else ' (%)' if j == 2 else ''
 
                     axes[j, 2 * i + t].set_title(f'{display_name} {m.__name__}{u}, time-lags {24 * t} - {24 * t + 23} h', fontsize = 32)
-            
+        plt.tight_layout()
         plt.savefig(f'./{args.model}_models/metrics_reliability.png')
         plt.close()
 
