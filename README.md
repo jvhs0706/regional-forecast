@@ -7,7 +7,7 @@ This repository introduces a deep-learning model that makes **REGIONAL** air pol
 The main contributions of the project is:
 
 - Breaking the spatial confinement of the ground-observation-based deep-learning air pollution forecast to the ground monitor stations.
-- Superceding the widely-used spatial correction methods.
+- Superceding the widely-used spatial correction (interpolation methods).
 - Proposing the novel broadcasting layer that may be applied to deep-learning tasks of similar nature. 
 
 The publication related to the project is under composition and review.

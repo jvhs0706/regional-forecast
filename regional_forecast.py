@@ -10,6 +10,8 @@ import torch
 from plot_stations import get_border
 import matplotlib.pyplot as plt
 
+import os
+
 wrf_species = ['PSFC', 'U10', 'V10', 'T2', 'Q2']
 cmaq_species = ['NO2', 'O3', 'SO2', 'CO', ('ASO4J', 'ASO4I', 'ANO3J', 'ANO3I', 'ANH4J', 'ANH4I', 'AXYL1J', 'AALKJ', 'AXYL2J', 'AXYL3J', 'ATOL1J', 'ATOL2J', 'ATOL3J', 'ABNZ1J', 'ABNZ2J', 'ABNZ3J', 'ATRP1J', 'ATRP2J', 'AISO1J', 'AISO2J', 'ASQTJ', 'AORGCJ', 'AORGPAJ', 'AORGPAI', 'AECJ', 'AECI', 'A25J', 'A25I', 'ANAJ', 'ANAI', 'ACLJ', 'AISO3J', 'AOLGAJ', 'AOLGBJ')]
 
@@ -18,13 +20,12 @@ lat_resolution, lon_resolution = 50, 80
 lats, lons = np.meshgrid(np.linspace(lat_min, lat_max, lat_resolution), np.linspace(lon_min, lon_max, lon_resolution), indexing='ij')
 cmaq_latlon = cll()
 
-begin_date, end_date = datetime.date(2020, 12, 1), datetime.date(2020, 12, 30)
-batch_size = 2
 
-fspmc_cm_kwargs = {'vmin': 0, 'vmax': 60, 'cmap': 'GnBu'}
-o3_cm_kwargs = {'vmin': 0, 'vmax': 50, 'cmap': 'GnBu'}
 
 borders = get_border()
+
+dataset_base_date = date(2015, 1, 4)
+begin_date, end_date = date(2020, 1, 1), date(2020, 12, 31)
 
 def get_wrf(date: datetime.date, begin_hour = 9, predict_length = 2):
     out = {sp: [] for sp in wrf_species}
@@ -78,8 +79,6 @@ if __name__ == '__main__':
     parser.add_argument('model', help = 'Model name.')
     parser.add_argument('-bs', '--batch_size', type = int, default = 2)
     args = parser.parse_args()
-
-    begin_index, end_index = (begin_date - dataset_base_date).days - 1, (end_date - dataset_base_date).days
     
     with open(f'./{args.model}_models/train.txt', 'r') as f:
         train_stations = f.read().splitlines()
@@ -97,6 +96,12 @@ if __name__ == '__main__':
         target_stations = list(target_lat_lon.keys())
     with open(f'./{args.model}_models/baseline/baseline_source_differences.pkl', 'rb') as f:
         baseline_source_differences = pk.load(f)
+    with open(f'./{args.model}_models/temporal_split.pkl', 'rb') as f:
+        split = pk.load(f)
+        train_dates, test_dates = split['train'], split['test']
+
+    if not os.path.isdir(f'./{args.model}_models/regional_forecast_results'):
+        os.makedirs(f'./{args.model}_models/regional_forecast_results')
 
     baseline_weights = np.stack([np.apply_along_axis(lambda z: 1/geodesic(z, source_lat_lon[s]).km, 2, np.stack([lats, lons], axis = -1)) for s in source_stations], axis = 0)
     baseline_weights = baseline_weights / baseline_weights.sum(axis = 0, keepdims = True)
@@ -109,32 +114,25 @@ if __name__ == '__main__':
     for st in source_stations:
         dataset.source.station_datasets[st].normalizer = source_normalizers[st]
     
-    cmaq_out, baseline_out, out, y = [], [], [], {st: [] for st in target_stations}
-    for i in range(begin_index, end_index + 1, args.batch_size):
-        X0, X1 = {st: [] for st in source_stations}, []
-        for j in range(i, min(i + args.batch_size, end_index + 1)):
-            _date = dataset_base_date + datetime.timedelta(days = j)
-            _X0, _, _y = dataset[j] 
-            for st in source_stations:
-                X0[st].append(_X0[st])
-            _X1 = {**get_wrf(_date), **get_cmaq(_date)}
-            _cmaq_out = np.stack([_X1['FSPMC'].transpose(1, 2, 0), _X1['O3'].transpose(1, 2, 0) * 1000], axis = -2)
-            _baseline_diff = np.stack([baseline_source_differences[s][j] for s in source_stations])
-            cmaq_out.append(_cmaq_out) 
-            _diff = (baseline_weights[:, :, :, None, None] * _baseline_diff[:, None, None, :, :]).sum(axis = 0)
-            baseline_out.append(_cmaq_out + _diff)
-            _X1 = np.stack([_X1[sp].reshape(-1, lat_resolution* lon_resolution).T for sp in dataset.target_wrf_cmaq.features], axis = -2) 
-            X1.append(_X1)
-            
-            if j != begin_index:
-                for st in target_stations:
-                    y[st].append(_y[st][:, :24].detach().numpy())
-            print(_date)
-            
+
+    _date = begin_date
+    while _date <= end_date:
+        _ind = (_date - dataset_base_date).days
+        X0, _, _y = dataset[_ind]
         for st in source_stations:
-            X0[st] = torch.tensor(np.stack(X0[st], axis = 0)).float()
-        X1 = wrf_cmaq_normalizers(torch.tensor(np.stack(X1, axis = 1)).float())
+            X0[st] = X0[st].unsqueeze(0).float()
         
+        X1 = {**get_wrf(_date), **get_cmaq(_date)}
+        cmaq_out = np.stack([X1['FSPMC'].transpose(1, 2, 0), X1['O3'].transpose(1, 2, 0) * 1000], axis = -2)
+        baseline_diff = np.stack([baseline_source_differences[s][_ind] for s in source_stations])
+        diff = (baseline_weights[:, :, :, None, None] * baseline_diff[:, None, None, :, :]).sum(axis = 0)
+        baseline_out = cmaq_out + diff
+
+        X1 = torch.tensor(np.stack([X1[sp].reshape(-1, lat_resolution* lon_resolution).T for sp in dataset.target_wrf_cmaq.features], axis = -2)).unsqueeze(1).float()
+        X1 = wrf_cmaq_normalizers(X1)
+
+        
+
         source_decoded = torch.stack([model.source_encoder_decoders[st](t) for st, t in X0.items()], axis = 0)
         U, N, F, T = source_decoded.shape
         if hasattr(model, 'decoded_bn'):
@@ -144,45 +142,11 @@ if __name__ == '__main__':
         assert dist.shape == (U, V)
         out_obs = model.gcn(source_decoded, dist) # V, N, -1, T
         out_wrf_cmaq = model.wrf_cmaq_dlstms(X1.view(V*N, C, T)).view(V, N, -1, T)
-        out.append(model.finals(torch.cat([out_obs, out_wrf_cmaq], axis = 2).view(V*N, -1, T)).view(lat_resolution, lon_resolution, N, -1, T))
-    
-    cmaq_out = np.stack(cmaq_out, axis = 2)
-    baseline_out = np.stack(baseline_out, axis = 2)
-    out = torch.cat(out, axis = 2).detach().numpy()
-    for st in target_stations:
-        y[st] = np.stack(y[st])
+        out = model.finals(torch.cat([out_obs, out_wrf_cmaq], axis = 2).view(V*N, -1, T)).view(lat_resolution, lon_resolution, N, -1, T)
+        out = out.squeeze(2).detach().numpy()
 
-    cmaq_fspmc_day1, cmaq_fspmc_day2, cmaq_o3_day1, cmaq_o3_day2 = cmaq_out[:, :, 1:, 0, :24], cmaq_out[:, :, :-1, 0, 24:],\
-        cmaq_out[:, :, 1:, 1, :24], cmaq_out[:, :, :-1, 1, 24:] 
-    baseline_fspmc_day1, baseline_fspmc_day2, baseline_o3_day1, baseline_o3_day2 = baseline_out[:, :, 1:, 0, :24], baseline_out[:, :, :-1, 0, 24:],\
-        baseline_out[:, :, 1:, 1, :24], baseline_out[:, :, :-1, 1, 24:] 
-    fspmc_day1, fspmc_day2, o3_day1, o3_day2 = out[:, :, 1:, 0, :24], out[:, :, :-1, 0, 24:],\
-        out[:, :, 1:, 1, :24], out[:, :, :-1, 1, 24:]
+        np.save(f'./{args.model}_models/regional_forecast_results/NCTMO.CMAQ.{_date.year}{_date.month:02}{_date.day:02}09.npy', cmaq_out.astype(np.float16))
+        np.save(f'./{args.model}_models/regional_forecast_results/NCTMO.BASELINE.{_date.year}{_date.month:02}{_date.day:02}09.npy', baseline_out.astype(np.float16))
+        np.save(f'./{args.model}_models/regional_forecast_results/NCTMO.MODEL.{_date.year}{_date.month:02}{_date.day:02}09.npy', out.astype(np.float16))
 
-    fig, axes = plt.subplots(4, 3, figsize = (100, 100))
-    for i, (arr, arr_baseline, arr_cmaq) in enumerate(zip([fspmc_day1, fspmc_day2, o3_day1, o3_day2], [baseline_fspmc_day1, baseline_fspmc_day2, baseline_o3_day1, baseline_o3_day2], [cmaq_fspmc_day1, cmaq_fspmc_day2, cmaq_o3_day2, cmaq_o3_day2])):
-        (cm_kwargs, species, unit) = (fspmc_cm_kwargs, '$\mathrm{PM}_{2.5}$', '$\mu g/m^3$') if i < 2 else (o3_cm_kwargs, '$\mathrm{O}_3$', 'ppbv')
-        
-        cm, cm, cm = axes[i, 0].pcolormesh(lons, lats, arr_cmaq.mean(axis = (2, 3)), **cm_kwargs),\
-            axes[i, 1].pcolormesh(lons, lats, arr_baseline.mean(axis = (2, 3)), **cm_kwargs),\
-            axes[i, 2].pcolormesh(lons, lats, arr.mean(axis = (2, 3)), **cm_kwargs)
-        
-        axes[i, 0].set_title(f'{species}, {24*(i % 2)} - {24*(i % 2) + 23} h, CMAQ', fontsize = 60)
-        axes[i, 1].set_title(f'{species}, {24*(i % 2)} - {24*(i % 2) + 23} h, Spatial correction', fontsize = 60)
-        axes[i, 2].set_title(f'{species}, {24*(i % 2)} - {24*(i % 2) + 23} h, Model', fontsize = 60)
-        
-        cb = fig.colorbar(cm, ax = axes[i, :], orientation = 'vertical')
-        cb.ax.tick_params(labelsize = 44)
-        cb.set_label(unit, fontsize = 48)
-
-        for j in range(3):
-            axes[i, j].scatter(x = [target_lat_lon[st][1] for st in target_stations], y = [target_lat_lon[st][0] for st in target_stations], \
-                c = [np.nanmean(y[st][:, i // 2, :]) for st in target_stations], s = 144, edgecolors='k', **cm_kwargs)
-            for (blon, blat) in borders:
-                axes[i, j].plot(blon, blat, 'k', linewidth=1)
-            
-            axes[i, j].xaxis.set_tick_params(labelsize=44)
-            axes[i, j].yaxis.set_tick_params(labelsize=44)
-            axes[i, j].set_xlabel('Longitude', fontsize=48)
-            axes[i, j].set_ylabel('Latitude', fontsize=48)
-    plt.savefig(f'./{args.model}_models/regional_forecast_{str(begin_date)}-{str(end_date)}.png', bbox_inches='tight')
+        _date = _date + datetime.timedelta(days = 1)

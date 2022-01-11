@@ -1,26 +1,13 @@
-from model import *
-from dataset import *
-import pickle as pk
-import argparse
-import os
-
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-
-from model import Regional
-from dataset import RegionalDataset
-
-import matplotlib.pyplot as plt
-from geopy.distance import geodesic
-from plot_stations import get_border
-
-import pandas as pd
-from data.match import *
-
-from datetime import datetime, timedelta
-
 from test import *
+
+def regional_reliability(source_lat_lon, weight_decay, lat_range, lon_range):
+    x, y = np.linspace(*lon_range, 100), np.linspace(*lat_range, 100)
+    X, Y = np.meshgrid(x, y)
+    out = np.zeros_like(X)
+    for decay_factor, (lat, lon) in zip(weight_decay, source_lat_lon.values()):
+        dist = np.apply_along_axis(lambda z: geodesic((z[1], z[0]), (lat, lon)).km, axis = 0, arr = np.stack([X, Y]))
+        out += np.exp(-decay_factor * dist)
+    return X, Y, out  
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -52,6 +39,7 @@ if __name__ == '__main__':
     with open(f'./{args.model}_models/temporal_split.pkl', 'rb') as f:
         split = pk.load(f)
         train_dates, test_dates = split['train'], split['test']
+        print(train_dates.shape, test_dates.shape)
 
     target_stations = train_stations + test_stations
     dataset = RegionalDataset(target_stations)
