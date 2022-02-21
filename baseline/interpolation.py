@@ -21,7 +21,7 @@ class Interpolation:
         M, _ = target_lat_lon.shape # (M, 2)
         return np.apply_along_axis(lambda z: self._interpolate(target_lat_lon, z), 0, self.values)
 
-class Nearest(Interpolation):
+class NearestNeighbor(Interpolation):
     def __init__(self, lat_lon, values):
         super().__init__(lat_lon, values)
         
@@ -29,7 +29,7 @@ class Nearest(Interpolation):
         indices = np.apply_along_axis(lambda t: np.apply_along_axis(lambda s: geodesic(s, t).km, 1, self.lat_lon).argmin(), 1, target_lat_lon)
         return z[indices]
 
-class InverseDistance(Interpolation):
+class InverseDistanceWeighted(Interpolation):
     def __init__(self, lat_lon, values):
         super().__init__(lat_lon, values)
         
@@ -48,9 +48,9 @@ class Kriging(Interpolation):
         return out
 
 interpolation_methods = {
-    'nearest': Nearest,
-    'inverse': InverseDistance,
-    'kriging': Kriging
+    'NN': NearestNeighbor,
+    'IDW': InverseDistanceWeighted,
+    'Kriging': Kriging
 }
 
 if __name__ == '__main__':

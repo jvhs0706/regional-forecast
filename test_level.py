@@ -1,37 +1,13 @@
-from model import *
-from dataset import *
-from metrics import *
-from data.match import *
-from model import Regional
-from dataset import RegionalDataset
-from plot_stations import get_border
-
-import pickle as pk
-import argparse
-import os
-import numpy as np
-import matplotlib.pyplot as plt
-from geopy.distance import geodesic
-import pandas as pd
-from datetime import datetime, timedelta, date
-
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-
-def plot_ax(st, sp, u, ax, time_axis, obs, pred, time_lag_day):
-    ax.plot(time_axis, obs, 'ro', label = 'Observation', markersize = 0.5)
-    ax.plot(time_axis, pred, 'b', label = 'Prediction', linewidth = 0.5)
-    ax.legend(fontsize = 20)
-    ax.set_title(f'{sp} ({u}), time-lags {24 * time_lag_day} - {24 * time_lag_day + 23} h', fontsize = 24)
-    ax.xaxis.set_tick_params(labelsize=16)
-    ax.yaxis.set_tick_params(labelsize=16)
+from test import *
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('model', help = 'Model name.')
     parser.add_argument('-bs', '--batch_size', type = int, help = 'Batch size for loading data.', default = 64)
     parser.add_argument('-bl', '--baselines', nargs = '*', help = 'Load baseline data.', default = [])
+    parser.add_argument('-fspmc', '--fspmc_levels', type = float, nargs = '*', help = 'The segments of FSPMC levels.', default = [])
+    parser.add_argument('-o3', '--o3_levels', type = float, nargs = '*', help = 'The segments of O3 levels.', default = [])
+
     args = parser.parse_args()
     
     # model loading
@@ -104,53 +80,23 @@ if __name__ == '__main__':
     
     baseline = {bl: np.concatenate([baseline_pred[bl][st] for st in test_stations], axis = 0).reshape(N, 2, 2, 24) for bl in args.baselines}
     
-    for m in metrics:
-        cmaq_values = m(pred = cmaq, y = y, axis = (0, 3))
 
-        baseline_values_dic = {bl: m(pred = baseline[bl], y = y, axis = (0, 3)) for bl in args.baselines}
-        values = m(pred = pred, y = y, axis = (0, 3))
-        
-        for i, sp in enumerate(['FSPMC', 'O3']):
+    for i, (sp, levels) in enumerate(zip(['FSPMC', 'O3'], [args.fspmc_levels, args.o3_levels])):
+        if len(levels) > 0:
+            partition = [(lb, ub) for lb, ub in zip([0] + levels, levels + [np.infty])]
             for j in range(2):
-                print(f'CMAQ, Species {sp}, day {j}, metric {m.__name__}: {cmaq_values[i, j]:.4g}')
-        
-                for bl in args.baselines:
-                    print(f'Baseline {bl}, Species {sp}, day{j}, metric {m.__name__}: {baseline_values_dic[bl][i, j]:.4g}')
-                print(f'Broadcasting, Species {sp}, day {j}, metric {m.__name__}: {values[i, j]:.4g}')
+                for lb, ub in partition:
+                    mask = np.vectorize(lambda z: lb <= z < ub)(y[:, i, j, :])
+                    
+                    print(f'{sp} in [{lb}, {ub}), portion {mask.mean() * 100:.1f}%, day {j}:')
+                    for m in metrics:
+                        cmaq_value = m(pred = cmaq[:, i, j, :][mask], y = y[:, i, j, :][mask])
 
-    pred, y, cmaq = np.concatenate([test_pred[st] for st in test_stations], axis = 0),\
-        np.concatenate([ground_truth[st] for st in test_stations], axis = 0), np.concatenate([cmaq_pred[st] for st in test_stations], axis = 0)
-    assert y.shape == pred.shape == cmaq.shape
-    N, _, _ = y.shape
-    
-    baseline = {bl: np.concatenate([baseline_pred[bl][st] for st in test_stations], axis = 0) for bl in args.baselines}
-
-    df = pd.DataFrame()
-    for m in metrics:
-        values = m(pred = pred, y = y, axis = 0)
-        baseline_values_dic = {bl: m(pred = baseline[bl], y = y, axis = 0) for bl in args.baselines}
-        cmaq_values = m(pred = cmaq, y = y, axis = 0)
-        for i, sp in enumerate(['FSPMC', 'O3']):
-            df[m.__name__, 'CMAQ', sp] = cmaq_values[i]
-            for bl in args.baselines:
-                df[m.__name__, f'SC ({bl})', sp] = baseline_values_dic[bl][i]
-            df[m.__name__, 'Broadcasting', sp] = values[i]
-    
-    fig = plt.Figure(figsize = (30, 30), constrained_layout=True)
-    cols = fig.subfigures(1, 2)
-    for i, (sp, sp_name, unit) in enumerate(zip(['FSPMC', 'O3'], ['$\mathrm{PM}_{2.5}$', '$\mathrm{O}_3$'], ['$\mu g/m^3$', 'ppbv'])):
-        cols[i].suptitle(f'{sp_name}', fontsize = 30)
-        axes = cols[i].subplots(4, 1)
-        for j, (m, u) in enumerate(zip(metrics, [unit, unit, '%', None])):
-            axes[j].plot(df[m.__name__, 'CMAQ', sp], label = 'CMAQ')
-            for bl in args.baselines:
-                axes[j].plot(df[m.__name__, f'SC ({bl})', sp], label = f'SC ({bl})')
-            axes[j].plot(df[m.__name__, 'Broadcasting', sp], label = 'Broadcasting')
-
-            axes[j].legend(fontsize = 16)
-            axes[j].set_title(f'{m.__name__} ({u})' if u is not None else f'{m.__name__}', fontsize = 24)
-            axes[j].xaxis.set_tick_params(labelsize=16)
-            axes[j].yaxis.set_tick_params(labelsize=16)
-            axes[j].set_xlabel('Time-lag (h)', fontsize=20)
-    fig.savefig(f'./{args.model}_models/temporal.png')
-    plt.close(fig)
+                        baseline_value_dic = {bl: m(pred = baseline[bl][:, i, j, :][mask], y = y[:, i, j, :][mask]) for bl in args.baselines}
+                        value = m(pred = pred[:, i, j, :][mask], y = y[:, i, j, :][mask])
+                    
+                        print(f'CMAQ, Species {sp}, metric {m.__name__}: {cmaq_value:.4g}')
+                        for bl in args.baselines:
+                            print(f'Baseline {bl}, Species {sp}, metric {m.__name__}: {baseline_value_dic[bl]:.4g}')
+                        print(f'Broadcasting, Species {sp}, metric {m.__name__}: {value:.4g}')
+                    print()

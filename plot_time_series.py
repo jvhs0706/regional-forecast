@@ -3,11 +3,10 @@ from test import *
 date_zero = date(2020, 1, 2)
 date_last = date_zero + timedelta(days = 364)
 
-hour_zero = datetime(2020, 1, 2, 9)
-time_axis = np.array([hour_zero + timedelta(hours = h) for h in range(364 * 24)]) 
+time_axis = np.array([date_zero + timedelta(days = h) for h in range(364)]) 
 
 def plot_ax(ax, title, time_axis, begin_date = date_zero, end_date = date_last, *, obs, pred, cmaq, bl):
-    begin_index, end_index = (begin_date - date_zero).days * 24, (end_date - date_zero).days * 24 + 24
+    begin_index, end_index = (begin_date - date_zero).days, (end_date - date_zero).days + 1
 
     ax.plot(time_axis[begin_index:end_index], cmaq[begin_index:end_index], 'y', label = 'CMAQ')
     ax.plot(time_axis[begin_index:end_index], bl[begin_index:end_index], 'c', label = 'Spatial correction')
@@ -25,9 +24,9 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('model', help = 'Model name.')
     parser.add_argument('-bs', '--batch_size', type = int, help = 'Batch size for loading data.', default = 64)
-    parser.add_argument('-bl', '--baseline', type = str, help = 'Type of prediction.', default = 'inverse')
-    parser.add_argument('--begin_date', type = int, nargs = 3, help = 'Day 0 of plot.', required=True)
-    parser.add_argument('--end_date', type = int, nargs = 3, help = 'Day -1 of plot.', required=True)
+    parser.add_argument('-bl', '--baseline', type = str, help = 'Type of prediction.', default = 'Kriging')
+    parser.add_argument('--begin_date', type = int, nargs = 3, help = 'Day 0 of plot.', default = [date_zero.year, date_zero.month, date_zero.day])
+    parser.add_argument('--end_date', type = int, nargs = 3, help = 'Day -1 of plot.', default = [date_last.year, date_last.month, date_last.day])
     parser.add_argument('--stations', type = str, nargs = '*', help = 'Plot certain stations.')
     args = parser.parse_args()
 
@@ -100,10 +99,10 @@ if __name__ == '__main__':
             fig, axes = plt.subplots(2, 2, figsize = (50, 20))
             fig.suptitle(f'Station {st} ({lat:.2f}°N, {lon:.2f}°E), {str(begin_date)} - {str(end_date)}', fontsize = 36)
             for i, (sp, display_name, unit) in enumerate(zip(['FSPMC', 'O3'], ['$\mathrm{PM}_{2.5}$', '$\mathrm{O}_3$'], ['$\mu g/m^3$', 'ppbv'])):
-                obs = ground_truth[st][1:, i, :24].flatten()
-                pred = [test_pred[st][1:, i, :24].flatten(), test_pred[st][:-1, i, 24:].flatten()]
-                cmaq = [cmaq_pred[st][1:, i, :24].flatten(), cmaq_pred[st][:-1, i, 24:].flatten()]
-                bl = [baseline_pred[st][1:, i, :24].flatten(), baseline_pred[st][:-1, i, 24:].flatten()]
+                obs = np.nanmean(ground_truth[st][1:, i, :24], axis = -1)
+                pred = [test_pred[st][1:, i, :24].mean(axis = -1), test_pred[st][:-1, i, 24:].mean(axis = -1)]
+                cmaq = [cmaq_pred[st][1:, i, :24].mean(axis = -1), cmaq_pred[st][:-1, i, 24:].mean(axis = -1)]
+                bl = [baseline_pred[st][1:, i, :24].mean(axis = -1), baseline_pred[st][:-1, i, 24:].mean(axis = -1)]
                 axes[i, 1].sharey(axes[i, 0])
                 for j in range(2):
                     plot_ax(axes[i, j], f'{display_name} ({unit}), time-lags {24 * j} - {24 * j + 23} h', time_axis, begin_date, end_date, obs = obs, pred = pred[j], cmaq = cmaq[j], bl = np.maximum(bl[j], 0))
@@ -118,10 +117,10 @@ if __name__ == '__main__':
                 lat, lon = target_lat_lon[st]
                 cols[j].suptitle(f'Station {st} ({lat:.2f}°N, {lon:.2f}°E)', fontsize = 30)
                 axes = cols[j].subplots(2, 1)
-                obs = ground_truth[st][1:, i, :24].flatten()
-                pred = [test_pred[st][1:, i, :24].flatten(), test_pred[st][:-1, i, 24:].flatten()]
-                cmaq = [cmaq_pred[st][1:, i, :24].flatten(), cmaq_pred[st][:-1, i, 24:].flatten()]
-                bl = [baseline_pred[st][1:, i, :24].flatten(), baseline_pred[st][:-1, i, 24:].flatten()]
+                obs = np.nanmean(ground_truth[st][1:, i, :24], axis = -1)
+                pred = [test_pred[st][1:, i, :24].mean(axis = -1), test_pred[st][:-1, i, 24:].mean(axis = -1)]
+                cmaq = [cmaq_pred[st][1:, i, :24].mean(axis = -1), cmaq_pred[st][:-1, i, 24:].mean(axis = -1)]
+                bl = [baseline_pred[st][1:, i, :24].mean(axis = -1), baseline_pred[st][:-1, i, 24:].mean(axis = -1)]
                 for k in range(2):
                     plot_ax(axes[k], f'Time-lags {24 * k} - {24 * k + 23} h', time_axis, begin_date, end_date, obs = obs, pred = pred[k], cmaq = cmaq[k], bl = np.maximum(bl[k], 0))
             fig.savefig(f'./{args.model}_models/plots/{sp}_{str(begin_date)}_{str(end_date)}.png')
